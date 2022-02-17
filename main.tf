@@ -74,12 +74,35 @@ resource "azurerm_subnet" "subnet_web" {
 }
 
 #Create the subnet that hold the db-servers
-resource "azurerm_subnet" "subnet_db" {
-  name                 = "subnet-db"
+resource "azurerm_subnet" "subnet_bastion" {
+  name                 = "AzureBastionSubnet"
   resource_group_name  = "${azurerm_resource_group.rg.name}"
   virtual_network_name = "${azurerm_virtual_network.vnet.name}"
   address_prefixes     = ["10.1.2.0/24"]
 }
+
+#Create the PIP for the bastion
+resource "azurerm_public_ip" "pip_bastion" {
+  name                = "publicIPForBastion"
+  location            = "${azurerm_resource_group.rg.location}"
+  resource_group_name = "${azurerm_resource_group.rg.name}"
+  allocation_method   = "Static"
+  sku                 = "Standard"
+}
+
+#Create the bastion servie in the bastion subnet
+resource "azurerm_bastion_host" "bastion" {
+  name                = "bastion"
+  location            = "${azurerm_resource_group.rg.location}"
+  resource_group_name = "${azurerm_resource_group.rg.name}"
+
+  ip_configuration {
+    name                 = "IPConfiguration"
+    subnet_id            = azurerm_subnet.subnet_bastion.id
+    public_ip_address_id = azurerm_public_ip.pip_bastion.id
+  }
+}
+
 
 # Create the PIP for the loadbalancer
 resource "azurerm_public_ip" "pip_lb" {
@@ -87,7 +110,6 @@ resource "azurerm_public_ip" "pip_lb" {
   location            = "${azurerm_resource_group.rg.location}"
   resource_group_name = "${azurerm_resource_group.rg.name}"
   allocation_method   = "Static"
-  sku                 = "Standard"
 }
 
 # Create the the loadbalancer and assign it the IP from the previous step
@@ -95,8 +117,7 @@ resource "azurerm_lb" "lb" {
   name                = "loadBalancer"
   location            = "${azurerm_resource_group.rg.location}"
   resource_group_name = "${azurerm_resource_group.rg.name}"
-  sku                 = "Standard"
-
+  
   frontend_ip_configuration {
     name                 = "PublicIPAddress"
     public_ip_address_id = azurerm_public_ip.pip_lb.id
