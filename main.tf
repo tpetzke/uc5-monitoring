@@ -81,19 +81,21 @@ resource "azurerm_subnet" "subnet_db" {
   address_prefixes     = ["10.1.2.0/24"]
 }
 
-#Create the PIP for the loadbalancer
+# Create the PIP for the loadbalancer
 resource "azurerm_public_ip" "pip_lb" {
   name                = "publicIPForLB"
   location            = "${azurerm_resource_group.rg.location}"
   resource_group_name = "${azurerm_resource_group.rg.name}"
   allocation_method   = "Static"
+  sku                 = "Standard"
 }
 
-#Create the the loadbalancer and assign it the IP from the previous step
+# Create the the loadbalancer and assign it the IP from the previous step
 resource "azurerm_lb" "lb" {
   name                = "loadBalancer"
   location            = "${azurerm_resource_group.rg.location}"
   resource_group_name = "${azurerm_resource_group.rg.name}"
+  sku                 = "Standard"
 
   frontend_ip_configuration {
     name                 = "PublicIPAddress"
