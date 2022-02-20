@@ -1,5 +1,5 @@
 #User vars
-variable "azure_region" { default = "westeurope" }
+variable "azure_region" { default = "eastus" }
 variable "env" { default = "rg-usecase5" }
 
 variable "ports" {

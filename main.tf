@@ -73,15 +73,46 @@ resource "azurerm_subnet" "subnet_web" {
   address_prefixes     = ["10.1.1.0/24"]
 }
 
-#Create the subnet that hold the db-servers
+#Create the subnet that holds the Bastion
 resource "azurerm_subnet" "subnet_bastion" {
   name                 = "AzureBastionSubnet"
-  resource_group_name  = "${azurerm_resource_group.rg.name}"
-  virtual_network_name = "${azurerm_virtual_network.vnet.name}"
+  resource_group_name  = azurerm_resource_group.rg.name
+  virtual_network_name = azurerm_virtual_network.vnet.name
   address_prefixes     = ["10.1.2.0/24"]
 }
 
-#Create the PIP for the bastion
+# Create outbound public IP for the NAT Gateway
+resource "azurerm_public_ip" "pip_nat" {
+  name                = "publicIpForNAT"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  allocation_method   = "Static"
+  sku                 = "Standard"
+  availability_zone   = "No-Zone"
+}
+
+resource "azurerm_nat_gateway" "nat_gw" {
+  name                    = "natgw"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  sku_name                = "Standard"
+  idle_timeout_in_minutes = 10
+
+  depends_on              = [azurerm_public_ip.pip_nat]
+}
+
+resource "azurerm_subnet_nat_gateway_association" "subnet_4_nat" {
+  subnet_id      = azurerm_subnet.subnet_web.id
+  nat_gateway_id = azurerm_nat_gateway.nat_gw.id
+}
+
+resource "azurerm_nat_gateway_public_ip_association" "pip_4_nat" {
+  nat_gateway_id       = azurerm_nat_gateway.nat_gw.id
+  public_ip_address_id = azurerm_public_ip.pip_nat.id
+}
+
+/*
+# Create the PIP for the bastion
 resource "azurerm_public_ip" "pip_bastion" {
   name                = "publicIPForBastion"
   location            = "${azurerm_resource_group.rg.location}"
@@ -90,7 +121,7 @@ resource "azurerm_public_ip" "pip_bastion" {
   sku                 = "Standard"
 }
 
-#Create the bastion servie in the bastion subnet
+# Create the bastion service in the bastion subnet
 resource "azurerm_bastion_host" "bastion" {
   name                = "bastion"
   location            = "${azurerm_resource_group.rg.location}"
@@ -102,7 +133,7 @@ resource "azurerm_bastion_host" "bastion" {
     public_ip_address_id = azurerm_public_ip.pip_bastion.id
   }
 }
-
+*/
 
 # Create the PIP for the loadbalancer
 resource "azurerm_public_ip" "pip_lb" {
@@ -110,6 +141,7 @@ resource "azurerm_public_ip" "pip_lb" {
   location            = "${azurerm_resource_group.rg.location}"
   resource_group_name = "${azurerm_resource_group.rg.name}"
   allocation_method   = "Static"
+  sku                 = "Standard"
 }
 
 # Create the the loadbalancer and assign it the IP from the previous step
@@ -117,7 +149,8 @@ resource "azurerm_lb" "lb" {
   name                = "loadBalancer"
   location            = "${azurerm_resource_group.rg.location}"
   resource_group_name = "${azurerm_resource_group.rg.name}"
-  
+  sku                 = "Standard"
+
   frontend_ip_configuration {
     name                 = "PublicIPAddress"
     public_ip_address_id = azurerm_public_ip.pip_lb.id
@@ -152,18 +185,55 @@ resource "azurerm_lb_rule" "lb_rules" {
   probe_id                       = azurerm_lb_probe.lbprobes[count.index].id
 }
 
+resource "azurerm_network_security_group" "nsg_web" {
+  name                = "nsg-webserver"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+
+  security_rule {
+    name                       = "allow_ssh_sg"
+    priority                   = 100
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "22"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "allow_http_sg"
+    priority                   = 110
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "80"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+}
+
 #Create 2 FrontEnd NICs for the webservers in the web subnet
 resource "azurerm_network_interface" "nic_webservers" {
   count               = 2
   name                = "webnic-${count.index}"
-  location            = "${azurerm_resource_group.rg.location}"
-  resource_group_name = "${azurerm_resource_group.rg.name}"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
 
   ip_configuration {
     name                          = "IPConfiguration"
     subnet_id                     = azurerm_subnet.subnet_web.id
-    private_ip_address_allocation = "dynamic"
+    private_ip_address_allocation = "Dynamic"
   }
+}
+
+# Associate the NSG with the Web Server NIC
+resource "azurerm_network_interface_security_group_association" "association" {
+  count                     = 2
+  network_interface_id      = "${element(azurerm_network_interface.nic_webservers.*.id, count.index)}"
+  network_security_group_id = azurerm_network_security_group.nsg_web.id
 }
 
 resource "azurerm_network_interface_backend_address_pool_association" "nic_2_backend" {
