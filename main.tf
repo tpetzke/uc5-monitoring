@@ -1,11 +1,10 @@
- # IaC module to deploy a 2-Tier IaaS infrastructure in Azure
- # Tier 1: Web-Layer consisting of 2 Load Balanced Web Servers
- # Tier 2: DB-Layer with a Postgres DB
+ # IaC module to deploy a simple IaaS infrastructure in Azure
+ # A Web-Layer consisting of 2 Load Balanced Web Servers
  #
- # Note: The web-site is static so there will be no actual app-db
- #       communication between the web-servers and the DB. 
- #       It is used for demo purposes only
- 
+ # As a standard load balancer is used the setup is more complex
+ # The VMs need a NAT gateway for outbound communication
+ # The VMs need a NSG that allows incoming traffic on selected ports
+
 # Bootstrapping Template File
 data "template_file" "nginx_vm_cloud_init" {
   template = file("install-nginx.sh")
